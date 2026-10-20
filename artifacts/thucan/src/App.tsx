@@ -1,13 +1,13 @@
-import { type Dispatch, type SetStateAction, useMemo, useState } from 'react';
+import { type Dispatch, type SetStateAction, useEffect, useMemo, useState } from 'react';
 import { Link, Route, Router as WouterRouter, Switch, useLocation } from 'wouter';
-import { ArrowLeft, ArrowUpRight, Clock3, Compass, Info, MapPin, Navigation, Utensils, Users } from 'lucide-react';
+import { ArrowLeft, Clock3, Info, MapPin, Navigation, Users, X, Search, ChevronRight, Maximize2 } from 'lucide-react';
 
 type Language = 'en' | 'zh';
 type Dish = { name: string; zh: string; description: string; zhDescription: string; price: number; rating: number; available: boolean; tags: string[] };
 type Stall = { id: string; label: string; zh: string; queue: number; menu: Dish[] };
 type Seat = 'vacant' | 'reserved' | 'occupied';
 type Table = { id: string; seats: number; states: Seat[] };
-type Cluster = { id: string; label: string; occupancy: number; capacity: number; tables: Table[]; x: number; y: number };
+type Cluster = { id: string; label: string; occupancy: number; capacity: number; tables: Table[] };
 type Floor = { id: string; label: string; occupancy: number };
 type Canteen = {
   id: string; name: string; zh: string; officialLocation: string; zhLocation: string; hours: string; zhHours: string;
@@ -49,8 +49,43 @@ const venues: Canteen[] = [
 ];
 
 const occupancyTone = (value: number) => value < 60 ? '#61a777' : value <= 85 ? '#d5ae3c' : '#ca6259';
-const isSuitable = (venue: Canteen, dietary: string[], budget: number) =>
-  (!dietary.length || dietary.every((tag) => venue.tags.includes(tag))) && venue.price[0] <= budget;
+const tableSeatCounts = [2, 4, 2, 4, 4, 2] as const;
+const occupiedSeatsByCluster = [
+  [0, 0, 0, 0, 0, 0],
+  [0, 1, 0, 0, 1, 0],
+  [1, 1, 0, 0, 2, 1],
+  [2, 2, 1, 2, 3, 1],
+  [2, 4, 1, 3, 2, 2],
+  [2, 4, 2, 4, 4, 2],
+];
+const reservedSeatsByCluster = [
+  [0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 1, 0, 0],
+  [0, 0, 1, 0, 0, 0],
+  [0, 0, 0, 0, 0, 1],
+  [0, 0, 0, 1, 0, 0],
+  [0, 0, 0, 0, 0, 0],
+];
+
+function makeFloorClusters(floorId: string): Cluster[] {
+  return ['a', 'b', 'c', 'd', 'e', 'f'].map((id, clusterIndex) => {
+    const tables = tableSeatCounts.map((seats, tableIndex) => {
+      const occupied = occupiedSeatsByCluster[clusterIndex][tableIndex];
+      const reserved = reservedSeatsByCluster[clusterIndex][tableIndex];
+      const states: Seat[] = Array.from({ length: seats }, (_, seatIndex) =>
+        seatIndex < occupied ? 'occupied' : seatIndex < occupied + reserved ? 'reserved' : 'vacant',
+      );
+      return { id: `${floorId}-${id.toUpperCase()}${String(tableIndex + 1).padStart(2, '0')}`, seats, states };
+    });
+    return {
+      id,
+      label: `Cluster ${id.toUpperCase()}`,
+      occupancy: [34, 48, 58, 67, 79, 86][clusterIndex],
+      capacity: tables.reduce((total, table) => total + table.seats, 0),
+      tables,
+    };
+  });
+}
 
 function App() {
   const [language, setLanguage] = useState<Language>('en');
@@ -103,83 +138,72 @@ function HomePage({ language, t, onOpenFloor }: { language: Language; t: (en: st
   const [time, setTime] = useState(0);
   const [dietary, setDietary] = useState<string[]>([]);
   const [budget, setBudget] = useState(50);
-  const [selectedId, setSelectedId] = useState('guanchouyuan');
-  const activeVenue = venues.find((venue) => venue.id === selectedId) ?? venues[0];
+  const [search, setSearch] = useState('');
+  const [showFullMap, setShowFullMap] = useState(false);
   const times = [t('Now', '现在'), '+15', '+30'];
   const toggleDiet = (tag: string) => setDietary((current) => current.includes(tag) ? current.filter((item) => item !== tag) : [...current, tag]);
-  const locationLabels = useMemo(() => venues, []);
+  const filteredVenues = useMemo(() => venues.filter((venue) => {
+    const matchesDiet = !dietary.length || dietary.every((tag) => venue.tags.includes(tag));
+    const matchesBudget = venue.price[0] <= budget;
+    const matchesSearch = `${venue.name} ${venue.zh}`.toLowerCase().includes(search.toLowerCase().trim());
+    return matchesDiet && matchesBudget && matchesSearch;
+  }), [dietary, budget, search]);
+
+  useEffect(() => {
+    if (!showFullMap) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShowFullMap(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [showFullMap]);
 
   return <main className="home-layout">
-    <aside className="side-panel">
-      <div>
-        <div className="eyebrow">{t('Your next meal, sorted', '下一餐，轻松安排')}</div>
-        <h1 className="hero-title">{t('Beat the lunch rush.', '错峰吃饭，刚刚好。')}</h1>
-        <p className="hero-copy">{t('Find a calmer canteen, then find your seat and something good to eat.', '先挑人少的食堂，再找座位、选好吃的。')}</p>
+    <section className="map-area">
+      <div className="home-intro">
+        <div className="eyebrow">{t('Tsinghua campus dining', '清华校园餐饮')}</div>
+        <h1>{t('Find your next meal.', '找一顿合适的饭。')}</h1>
+        <p>{t('Choose a dining hall. Check the sample floor plan, seats and stalls.', '选择食堂，查看示意楼层、座位和档口。')}</p>
       </div>
-      <div className="sample-banner" data-testid="status-sample-data">
-        <Info size={15} strokeWidth={1.8} />
-        <div><strong>{t('Illustrative campus preview', '校园示意数据')}</strong>{t('Crowds, routes, seats and menus are sample estimates — not a live university feed.', '人流、路线、座位与菜单均为示例估算，并非实时校方数据。')}</div>
-      </div>
-      <section className="control-block">
-        <div className="control-label">{t('Crowd outlook', '人流时段')}</div>
-        <div className="segmented" role="group" aria-label="Crowd forecast">
-          {times.map((label, i) => <button key={label} data-testid={`button-time-${i}`} className={time === i ? 'active' : ''} onClick={() => setTime(i)}>{label}</button>)}
+      <figure className="campus-map-frame" data-testid="map-campus">
+        <img src={`${import.meta.env.BASE_URL}tsinghua-campus-map.jpg`} alt={t('Illustrated Tsinghua University campus map', '清华大学校园地图示意')} />
+        <figcaption>{t('Campus map · reference image', '校园地图 · 参考示意')}</figcaption>
+        <button className="map-expand" data-testid="button-expand-map" onClick={() => setShowFullMap(true)}><Maximize2 size={13} />{t('Full map', '放大地图')}</button>
+      </figure>
+      {showFullMap && <div className="map-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowFullMap(false); }}>
+        <section className="map-modal" role="dialog" aria-modal="true" aria-label={t('Full campus map', '完整校园地图')}>
+          <header className="map-modal-header"><span>{t('Tsinghua campus map', '清华校园地图')}</span><button className="close-sheet" aria-label={t('Close map', '关闭地图')} onClick={() => setShowFullMap(false)}><X size={19} /></button></header>
+          <div className="map-zoom-viewport"><img src={`${import.meta.env.BASE_URL}tsinghua-campus-map.jpg`} alt={t('Full detailed Tsinghua University campus map', '清华大学详细校园地图')} /></div>
+        </section>
+      </div>}
+      <section className="finder-panel">
+        <div className="finder-heading">
+          <div><h2>{t('Dining halls', '食堂')}</h2><span>{filteredVenues.length} {t('places', '处')}</span></div>
+          <label className="search-box"><Search size={15} /><input aria-label={t('Search dining halls', '搜索食堂')} data-testid="input-search-canteens" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('Search by name', '按名称搜索')} /></label>
         </div>
-      </section>
-      <section className="control-block">
-        <div className="control-label">{t('Dietary preference', '饮食偏好')}</div>
+        <div className="quick-filters">
+          <div className="time-filter" role="group" aria-label={t('Crowd outlook', '人流时段')}>
+            {times.map((label, i) => <button key={label} data-testid={`button-time-${i}`} className={time === i ? 'active' : ''} onClick={() => setTime(i)}>{label}</button>)}
+          </div>
+          <select aria-label={t('Price per person', '人均预算')} data-testid="select-budget" value={budget} onChange={(event) => setBudget(Number(event.target.value))}>
+            <option value={20}>{t('≤ ¥20 / person', '人均 ≤ ¥20')}</option><option value={30}>{t('≤ ¥30 / person', '人均 ≤ ¥30')}</option><option value={50}>{t('≤ ¥50 / person', '人均 ≤ ¥50')}</option>
+          </select>
+        </div>
         <div className="filter-row">
           {['Vegetarian', 'Vegan', 'Halal'].map((tag) => <button key={tag} data-testid={`filter-${tag.toLowerCase()}`} className={`filter-chip ${dietary.includes(tag) ? 'active' : ''}`} aria-pressed={dietary.includes(tag)} onClick={() => toggleDiet(tag)}>{t(tag, tag === 'Vegetarian' ? '素食' : tag === 'Vegan' ? '纯素' : '清真')}</button>)}
         </div>
+        {filteredVenues.length ? <div className="venue-list">
+          {filteredVenues.map((venue) => {
+            const crowd = venue.occ[time];
+            return <button className="venue-row" key={venue.id} data-testid={`button-canteen-${venue.id}`} onClick={() => onOpenFloor(venue.id)}>
+              <span className="venue-crowd" style={{ color: occupancyTone(crowd) }}>{crowd}<small>%</small></span>
+              <span className="venue-copy"><strong>{language === 'en' ? venue.name.replace(' Dining Hall', '') : venue.zh}</strong><span>{language === 'en' ? venue.zh : venue.name.replace(' Dining Hall', '')} · ¥{venue.price[0]}–{venue.price[1]} · {venue.walk} {t('min walk', '分钟步行')}</span></span>
+              <ChevronRight size={17} />
+            </button>;
+          })}
+        </div> : <div className="empty-select">{t('No dining halls match these filters.', '没有符合条件的食堂。')}</div>}
+        <div className="sample-banner" data-testid="status-sample-data"><Info size={15} /><span>{t('Illustrative only · crowds, routes, seats, queues and menus are sample data, not live university information.', '仅供示意 · 人流、路线、座位、排队与菜单均为示例数据，非校方实时信息。')}</span></div>
       </section>
-      <section className="control-block">
-        <label className="control-label" htmlFor="budget">{t('Price per person', '人均预算')}</label>
-        <select id="budget" data-testid="select-budget" value={budget} onChange={(event) => setBudget(Number(event.target.value))} className="budget-select">
-          <option value={20}>{t('Up to ¥20', '¥20 以内')}</option>
-          <option value={30}>{t('Up to ¥30', '¥30 以内')}</option>
-          <option value={50}>{t('Up to ¥50', '¥50 以内')}</option>
-        </select>
-      </section>
-      <div className="foot-note" style={{ marginTop: 'auto', fontSize: 10, color: '#849085', lineHeight: 1.5 }}><Clock3 size={13} /><a className="source-link" href="https://www.tsinghua.edu.cn/en/Visitor/Experience_Tsinghua/Dining_Options.htm" target="_blank" rel="noreferrer">{t('Official names & hours · Tsinghua University', '官方名称与营业时间 · 清华大学')} <ArrowUpRight size={11} /></a></div>
-    </aside>
-    <section className="map-area">
-      <div className="map-head">
-        <div><h2>{t('Tsinghua · campus dining map', '清华 · 校园餐饮地图')}</h2><p>{t('Tap a pin for directions · double tap to open its floor plan.', '单击查看路线 · 双击打开楼层布局。')}</p></div>
-        <div className="legend">
-          {[[ '#61a777', t('Quieter', '较空闲') ], ['#d5ae3c', t('Building', '渐忙')], ['#ca6259', t('Busy', '较拥挤')]].map(([color, label]) => <span className="legend-item" key={label}><i className="legend-dot" style={{ background: color }} />{label}</span>)}
-        </div>
-      </div>
-      <div className="map-canvas" data-testid="map-campus">
-        <div className="map-grid" />
-        <div className="campus-lawn" style={{ left: '13%', top: '18%', width: '28%', height: '26%' }} />
-        <div className="campus-lawn" style={{ right: '13%', bottom: '14%', width: '26%', height: '30%' }} />
-        <div className="map-water" style={{ left: '35%', top: '65%', width: '29%', height: '12%', transform: 'rotate(-12deg)' }} />
-        <div className="map-path" />
-        <span className="campus-label" style={{ left: '18%', top: '16%' }}>{t('North campus', '校园北区')}</span>
-        <span className="campus-label" style={{ right: '18%', bottom: '18%' }}>{t('Zijing residential area', '紫荆生活区')}</span>
-        <span className="campus-label" style={{ left: '45%', top: '53%' }}>{t('Central green', '中央绿地')}</span>
-        <span className="map-compass">N ↑</span>
-        <svg className="map-route" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-          <path d={`M 8 86 C 20 82, ${Math.max(20, activeVenue.x - 18)} 78, ${Math.max(20, activeVenue.x - 8)} ${activeVenue.y + 8} S ${activeVenue.x - 2} ${activeVenue.y + 3}, ${activeVenue.x} ${activeVenue.y}`} />
-        </svg>
-        <span className="map-you" aria-hidden="true"><i />{t('You', '当前位置')}</span>
-        {locationLabels.map((item) => {
-          const occupancy = item.occ[time];
-          const suitable = isSuitable(item, dietary, budget);
-          return <button key={item.id} className={`map-pin ${selectedId === item.id ? 'selected' : ''} ${suitable ? '' : 'dim'}`} style={{ left: `${item.x}%`, top: `${item.y}%` }} data-testid={`pin-canteen-${item.id}`} aria-pressed={selectedId === item.id} aria-label={`${item.name}: ${occupancy}% occupancy`} onClick={() => setSelectedId(item.id)} onDoubleClick={() => onOpenFloor(item.id)}>
-            <span className="pin-dot" style={{ color: occupancyTone(occupancy) }}><i className="pin-pulse" /><i className="pin-core" style={{ background: occupancyTone(occupancy) }} /></span>
-            <span className="pin-card"><span className="pin-name">{language === 'en' ? item.name.replace(' Dining Hall', '') : item.zh}</span><span className="pin-cn">{language === 'en' ? item.zh : item.name.replace(' Dining Hall', '')}</span><span className="pin-status">{occupancy}% · {item.walk} {t('min walk', '分钟步行')}</span></span>
-          </button>;
-        })}
-        <div className="map-scale"><i /> 500 m</div>
-      </div>
-      <div className="map-footer">
-        <span className="foot-note"><MapPin size={13} />{t('Approximate walking routes · illustrative only', '步行路线为近似示意')}</span>
-        <div className="route-summary" aria-live="polite">
-          <span><Navigation size={12} /> {t('You are here', '当前位置')} → <strong>{language === 'en' ? activeVenue.name.replace(' Dining Hall', '') : activeVenue.zh}</strong> · {t(`about ${activeVenue.walk} min`, `约 ${activeVenue.walk} 分钟`)}</span>
-          <button className="route-open-button" data-testid="button-open-floor" onClick={() => onOpenFloor(activeVenue.id)}>{t('Open floor plan', '打开楼层布局')} <ArrowUpRight size={12} /></button>
-        </div>
-      </div>
     </section>
   </main>;
 }
@@ -187,95 +211,124 @@ function HomePage({ language, t, onOpenFloor }: { language: Language; t: (en: st
 function CanteenPage({ venue, language, t, groupSize, onGroupSize, onBack }: { venue: Canteen; language: Language; t: (en: string, zh: string) => string; groupSize: number; onGroupSize: (size: number) => void; onBack: () => void }) {
   const [floorId, setFloorId] = useState(venue.floors[0].id);
   const [clusterId, setClusterId] = useState('a');
-  const [stallId, setStallId] = useState(venue.stalls[0]?.id ?? '');
+  const [stallId, setStallId] = useState('');
   const [showRoute, setShowRoute] = useState(false);
   const floorIndex = Math.max(0, venue.floors.findIndex((floor) => floor.id === floorId));
   const currentFloor = venue.floors[floorIndex];
-  const clusters: Cluster[] = [
-    { id: 'a', label: 'Garden tables', occupancy: (currentFloor.occupancy + 13) % 100, capacity: 32, x: 17 + floorIndex * 3, y: 21 + floorIndex * 4, tables: [{ id: `${floorId}-A01`, seats: 2, states: ['vacant', 'vacant'] }, { id: `${floorId}-A02`, seats: 4, states: ['occupied', 'vacant', 'reserved', 'vacant'] }, { id: `${floorId}-A03`, seats: 4, states: ['occupied', 'occupied', 'vacant', 'vacant'] }] },
-    { id: 'b', label: 'Window side', occupancy: (currentFloor.occupancy + 28) % 100, capacity: 24, x: 57 - floorIndex * 4, y: 19 + floorIndex * 5, tables: [{ id: `${floorId}-B01`, seats: 2, states: ['occupied', 'vacant'] }, { id: `${floorId}-B02`, seats: 4, states: ['vacant', 'vacant', 'vacant', 'vacant'] }, { id: `${floorId}-B03`, seats: 4, states: ['occupied', 'occupied', 'occupied', 'vacant'] }] },
-    { id: 'c', label: 'Open dining', occupancy: (currentFloor.occupancy + 47) % 100, capacity: 40, x: 32 + floorIndex * 2, y: 57 - floorIndex * 3, tables: [{ id: `${floorId}-C01`, seats: 4, states: ['vacant', 'vacant', 'occupied', 'vacant'] }, { id: `${floorId}-C02`, seats: 2, states: ['reserved', 'vacant'] }, { id: `${floorId}-C03`, seats: 4, states: ['occupied', 'occupied', 'occupied', 'occupied'] }] },
-    { id: 'd', label: 'Quiet corner', occupancy: (currentFloor.occupancy + 3) % 100, capacity: 16, x: 69 - floorIndex * 3, y: 59 + floorIndex * 2, tables: [{ id: `${floorId}-D01`, seats: 2, states: ['vacant', 'vacant'] }, { id: `${floorId}-D02`, seats: 2, states: ['occupied', 'vacant'] }] },
-  ];
-  const selectedCluster = clusters.find((cluster) => cluster.id === clusterId) ?? clusters[0];
-  const selectedStall = venue.stalls.find((stall) => stall.id === stallId) ?? venue.stalls[0];
+  const clusters = makeFloorClusters(floorId);
+  const openSeats = (cluster: Cluster) => cluster.tables.reduce((total, table) => total + table.states.filter((state) => state === 'vacant').length, 0);
+  const clusterFits = (cluster: Cluster) => openSeats(cluster) >= groupSize;
+  const filteredClusters = clusters.filter(clusterFits);
+  const selectedCluster = filteredClusters.find((cluster) => cluster.id === clusterId) ?? filteredClusters[0];
+  const floorStalls = useMemo(() => makeFloorStalls(venue.stalls), [venue.stalls]);
+  const selectedStall = floorStalls.find((stall) => stall.id === stallId);
   const selectedName = language === 'en' ? venue.name : venue.zh;
   const occupancy = venue.occ[0];
-  const filteredGroups = selectedCluster.tables.filter((table) => table.states.filter((state) => state === 'vacant').length < groupSize);
+  useEffect(() => {
+    if (!stallId) return;
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') setStallId(''); };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [stallId]);
 
   return <main className="detail-shell">
-    <div className="breadcrumb"><button onClick={onBack} data-testid="button-back-map"><ArrowLeft size={13} style={{ verticalAlign: '-2px' }} /> {t('Campus map', '校园地图')}</button><span>/</span><span>{selectedName}</span></div>
+    <div className="breadcrumb"><button onClick={onBack} data-testid="button-back-map"><ArrowLeft size={15} /> {t('Dining halls', '食堂')}</button><span>/</span><span>{selectedName}</span></div>
     <div className="detail-header">
       <div>
-        <div className="eyebrow">{t('Canteen · sample interior', '食堂 · 室内示意')}</div>
+        <div className="eyebrow">{t('Dining hall', '食堂')}</div>
         <h1>{selectedName}</h1>
         <p className="detail-sub">{language === 'en' ? venue.officialLocation : venue.zhLocation}</p>
-        <div className="header-meta"><span className="meta-chip">{t('Official hours', '官方营业时间')} · {language === 'en' ? venue.hours : venue.zhHours}</span><span className="meta-chip">{t('Sample crowd', '示例人流')} · {occupancy}%</span><span className="meta-chip">¥{venue.price[0]}–{venue.price[1]} {t('typical', '参考')}</span></div>
+        <div className="header-meta"><span className="meta-chip"><Clock3 size={13} />{language === 'en' ? venue.hours : venue.zhHours}</span><span className="meta-chip">{t('Sample crowd', '示例人流')} · {occupancy}%</span><span className="meta-chip">¥{venue.price[0]}–{venue.price[1]}</span></div>
       </div>
-      <button className="directions-button" data-testid="button-directions" onClick={() => setShowRoute((shown) => !shown)}><Navigation size={15} />{showRoute ? t('Hide directions', '收起路线') : t(`Approx. ${venue.walk} min walk`, `约 ${venue.walk} 分钟步行`)}<ArrowUpRight size={14} /></button>
+      <button className="directions-button" data-testid="button-directions" onClick={() => setShowRoute((shown) => !shown)}><Navigation size={15} />{showRoute ? t('Hide route note', '收起路线说明') : t(`About ${venue.walk} min walk`, `步行约 ${venue.walk} 分钟`)}</button>
     </div>
-    {showRoute && <div className="route-box" data-testid="status-directions"><Compass size={19} /><span><strong>{t('Approximate route from your current campus area', '从当前校园区域出发的近似路线')}</strong>{t(`Follow the central campus path east, then continue toward ${venue.name.replace(' Dining Hall', '')}. About ${venue.walk} minutes on foot. Route is illustrative, not turn-by-turn navigation.`, `沿校园中央步道向东，再前往${venue.zh}，步行约 ${venue.walk} 分钟。路线为示意，并非实时导航。`)}</span></div>}
-    <div className="detail-grid">
-      <section className="floor-card">
-        <div className="floor-toolbar">
-          <div className="floor-tabs" role="tablist" aria-label="Canteen floor">
-            {venue.floors.map((floor) => <button key={floor.id} role="tab" aria-selected={floor.id === floorId} data-testid={`button-floor-${floor.id}`} className={floor.id === floorId ? 'active' : ''} onClick={() => { setFloorId(floor.id); setClusterId('a'); }}>{floor.label}</button>)}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 13 }}>
-            <span className="floor-status">{t('Sample floor occupancy', '示例楼层人流')} · {currentFloor.occupancy}%</span>
-            <div className="stepper"><button aria-label="Decrease group size" data-testid="button-floor-group-decrease" onClick={() => onGroupSize(Math.max(1, groupSize - 1))}>−</button><strong>{groupSize}</strong><button aria-label="Increase group size" data-testid="button-floor-group-increase" onClick={() => onGroupSize(Math.min(4, groupSize + 1))}>+</button></div>
+    {showRoute && <div className="route-box" data-testid="status-directions"><Navigation size={17} /><span>{t(`Approximate route note · about ${venue.walk} minutes on foot. Not turn-by-turn navigation.`, `路线示意 · 步行约 ${venue.walk} 分钟，非实时导航。`)}</span></div>}
+    <section className="floor-card">
+      <div className="floor-toolbar">
+        <div><div className="section-kicker">{t('Illustrative floor plan', '楼层示意')}</div><div className="floor-tabs" role="tablist" aria-label={t('Dining hall floor', '食堂楼层')}>
+          {venue.floors.map((floor) => <button key={floor.id} role="tab" aria-selected={floor.id === floorId} data-testid={`button-floor-${floor.id}`} className={floor.id === floorId ? 'active' : ''} onClick={() => { setFloorId(floor.id); setClusterId('a'); }}>{floor.label}</button>)}
+        </div></div>
+        <div className="floor-status">{t('Sample crowd', '示例人流')} <b>{currentFloor.occupancy}%</b></div>
+      </div>
+      <div className="floor-layout" data-testid={`map-floor-${floorId}`}>
+        <div className="plan-caption"><span>{t('Stalls', '档口')}</span><span>{t('Seating zones', '座位区')}</span></div>
+        <div className="stall-plan">
+          {floorStalls.map((stall, index) => <button key={stall.id} className="plan-stall" data-testid={`button-stall-${stall.id}`} onClick={() => setStallId(stall.id)}><span className="stall-number">{String(index + 1).padStart(2, '0')}</span><span>{language === 'en' ? stall.label : stall.zh}</span></button>)}
+          <span className="plan-way plan-way-one">{t('Queue / pickup', '排队 / 取餐')}</span>
+          <span className="plan-way plan-way-two">{t('Entry', '入口')}</span>
+        </div>
+      </div>
+      <div className="seat-section">
+        <div className="seat-section-head">
+          <div><h2>{t('Find seats', '找座位')}</h2><p><Users size={14} />{t('How many people?', '同行人数')}</p></div>
+          <div className="party-picker" role="group" aria-label={t('Party size', '同行人数')}>
+            {Array.from({ length: 6 }, (_, index) => index + 1).map((size) => <button key={size} className={groupSize === size ? 'active' : ''} aria-pressed={groupSize === size} data-testid={`button-party-${size}`} onClick={() => { onGroupSize(size); if (size > groupSize) setClusterId('a'); }}><span>{size}</span></button>)}
           </div>
         </div>
-        <div className="floor-map" data-testid={`map-floor-${floorId}`}>
-          <div className="floor-grid" />
-          <div className="floor-zone" style={{ left: '4%', top: '8%', width: '92%', height: '77%' }}><span className="zone-label">{t('Dining hall · illustrative layout', '餐厅 · 示意布局')}</span></div>
-          <div className="floor-zone" style={{ left: '5%', bottom: '5%', width: '25%', height: '10%', background: '#e4e9db' }}><span className="zone-label">{t('Counter', '取餐区')}</span></div>
-          <div className="floor-zone" style={{ right: '5%', bottom: '5%', width: '24%', height: '10%', background: '#e4e9db' }}><span className="zone-label">{t('Entry', '入口')}</span></div>
-          {clusters.map((cluster) => {
-            const fits = cluster.tables.some((table) => table.states.filter((state) => state === 'vacant').length >= groupSize);
-            return <button key={cluster.id} className={`cluster-button ${clusterId === cluster.id ? 'selected' : ''} ${fits ? '' : 'dim'}`} style={{ left: `${cluster.x}%`, top: `${cluster.y}%` }} data-testid={`button-cluster-${cluster.id}`} onClick={() => setClusterId(cluster.id)}>
-              <span className="cluster-name">{t(cluster.label, ['花园座位', '窗边座位', '开放用餐区', '安静角落'][['a', 'b', 'c', 'd'].indexOf(cluster.id)])}</span>
-              <span className="cluster-meta"><i className="occupancy-dot" style={{ background: occupancyTone(cluster.occupancy) }} />{cluster.occupancy}% · {cluster.capacity} {t('seats', '座')}</span>
-            </button>;
-          })}
-        </div>
-        <div className="table-detail" data-testid="panel-seat-states">
-          <div className="table-detail-head">
-            <div><h3>{t(selectedCluster.label, ['花园座位', '窗边座位', '开放用餐区', '安静角落'][['a', 'b', 'c', 'd'].indexOf(selectedCluster.id)])}</h3><p>{t('Demo table-level seating · group of', '示例桌位 ·')} {groupSize}</p></div>
-            <div className="seat-legend">{(['vacant', 'reserved', 'occupied'] as Seat[]).map((state) => <span key={state} className="seat-state"><i className={`seat ${state}`} />{t(state === 'vacant' ? 'Vacant' : state === 'reserved' ? 'Reserved' : 'Occupied', state === 'vacant' ? '空位' : state === 'reserved' ? '已留座' : '有人')}</span>)}</div>
+        <p className="available-count" aria-live="polite">{filteredClusters.length} {t('of 6 zones fit your group', '个座位区可容纳同行人数')}</p>
+        {selectedCluster ? <div className="seat-workspace">
+          <div className="cluster-list">
+            {clusters.map((cluster) => {
+              const fits = clusterFits(cluster);
+              const vacancies = openSeats(cluster);
+              return <button key={cluster.id} disabled={!fits} className={`cluster-option ${selectedCluster.id === cluster.id ? 'selected' : ''} ${fits ? '' : 'unavailable'}`} data-testid={`button-cluster-${cluster.id}`} aria-pressed={selectedCluster.id === cluster.id} onClick={() => setClusterId(cluster.id)}>
+                <span className="cluster-title">{t(cluster.label, `区域 ${cluster.id.toUpperCase()}`)}</span>
+                <span className="cluster-summary">{vacancies}/{cluster.capacity} {t('open seats', '空位')}</span>
+                <span className="cluster-preview" aria-hidden="true">{cluster.tables.map((table) => <i key={table.id}>{table.seats}</i>)}</span>
+              </button>;
+            })}
           </div>
-          <div className="table-row">{selectedCluster.tables.map((table) => {
-            const fits = table.states.filter((state) => state === 'vacant').length >= groupSize;
-            return <div key={table.id} className="table-chip" style={{ opacity: fits ? 1 : .36 }} data-testid={`table-${table.id}`}><strong>{table.id} · {table.seats} {t('seats', '座')}</strong><div className="seat-dots">{table.states.map((state, index) => <i title={t(state, state === 'vacant' ? '空位' : state === 'reserved' ? '已留座' : '有人')} key={`${table.id}-${index}`} className={`seat ${state}`} />)}</div></div>;
-          })}</div>
-          {filteredGroups.length > 0 && <div style={{ fontSize: 9, color: '#8c8d78', marginTop: 10 }}>{t(`${filteredGroups.length} table${filteredGroups.length > 1 ? 's' : ''} faded: not enough open seats for your group.`, `${filteredGroups.length} 张桌位因空位不足以容纳同行人数而淡化显示。`)}</div>}
-        </div>
+          <div className="seat-detail" data-testid="panel-seat-states">
+            <div className="seat-detail-title"><div><strong>{t(selectedCluster.label, `区域 ${selectedCluster.id.toUpperCase()}`)}</strong><span>{t('6 tables · sample', '6 张桌 · 示例')}</span></div><span className="seat-count">{openSeats(selectedCluster)}/{selectedCluster.capacity} {t('open seats', '空位')}</span></div>
+            <div className="table-grid" aria-label={t('Six-table layout', '六桌布局')}>
+              {selectedCluster.tables.map((table, index) => {
+                const available = table.states.filter((state) => state === 'vacant').length;
+                return <article key={table.id} className="table-card" data-testid={`table-${table.id}`}>
+                  <div className="table-card-title"><strong>{t(`Table ${index + 1}`, `桌 ${index + 1}`)}</strong><span>{table.seats} {t('seats', '座')}</span></div>
+                  <div className={`table-seat-layout seats-${table.seats}`} aria-label={t(`${table.seats}-seat table`, `${table.seats} 人桌`)}>
+                    {table.states.map((state, seatIndex) => <i key={seatIndex} className={`seat ${state}`} role="img" aria-label={t(state === 'vacant' ? 'Vacant seat' : state === 'reserved' ? 'Reserved seat' : 'Occupied seat', state === 'vacant' ? '空位' : state === 'reserved' ? '已留座' : '有人')} title={t(state === 'vacant' ? 'Vacant' : state === 'reserved' ? 'Reserved' : 'Occupied', state === 'vacant' ? '空位' : state === 'reserved' ? '已留座' : '有人')} />)}
+                  </div>
+                  <span className="table-open-count">{available}/{table.seats} {t('open', '空')}</span>
+                </article>;
+              })}
+            </div>
+            <div className="seat-legend"><span><i className="seat vacant" />{t('Open', '空位')}</span><span><i className="seat reserved" />{t('Held', '已留座')}</span><span><i className="seat occupied" />{t('Taken', '有人')}</span></div>
+          </div>
+        </div> : <div className="empty-select">{t('No zone has enough open seats for this group.', '没有足够空位容纳同行人数。')}</div>}
+      </div>
+      <div className="illustrative-note"><Info size={14} />{t('All seats, queues and menus are sample data, not live university information.', '座位、排队与菜单均为示例数据，非校方实时信息。')}</div>
+    </section>
+    {selectedStall && <div className="sheet-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setStallId(''); }}>
+      <section className="stall-sheet" role="dialog" aria-modal="true" aria-labelledby="stall-sheet-title" data-testid={`dialog-stall-${selectedStall.id}`}>
+        <div className="sheet-grip" />
+        <header className="sheet-header"><div><span className="section-kicker">{t('Sample stall', '档口示例')}</span><h2 id="stall-sheet-title">{language === 'en' ? selectedStall.label : selectedStall.zh}</h2><span className="queue-badge">{selectedStall.queue} {t('min sample queue', '分钟示例等候')}</span></div><button className="close-sheet" aria-label={t('Close stall details', '关闭档口详情')} data-testid="button-close-stall" onClick={() => setStallId('')}><X size={19} /></button></header>
+        <div className="sheet-menu-heading"><strong>{t('Menu', '菜单')}</strong><span>{t('Illustrative items', '示例菜品')}</span></div>
+        {selectedStall.menu.map((dish) => <article key={dish.name} className="dish-item">
+          <div className="dish-top"><span className="dish-name">{language === 'en' ? dish.name : dish.zh}</span><span className="dish-price">¥{dish.price}</span></div>
+          <p className="dish-desc">{language === 'en' ? dish.description : dish.zhDescription}</p>
+          <div className="dish-foot"><span>{dish.rating.toFixed(1)} {t('sample rating', '示例评分')}</span><span className={dish.available ? 'availability' : 'unavailable'}>{dish.available ? t('Available', '供应中') : t('Sold out', '售罄')}</span>{dish.tags.map((tag) => <span className="dish-tag" key={tag}>{t(tag, tag === 'Vegetarian' ? '素食' : '纯素')}</span>)}</div>
+        </article>)}
       </section>
-      <aside className="stall-card">
-        <div className="stall-heading"><div><h2>{t('Stalls & queues', '档口与排队')}</h2><p>{t('Queue estimates are illustrative', '排队时间为示例估算')}</p></div><Utensils size={17} color="#64806a" /></div>
-        <div className="stall-list">
-          {venue.stalls.map((stall) => <button key={stall.id} className={`stall-button ${stallId === stall.id ? 'active' : ''}`} data-testid={`button-stall-${stall.id}`} onClick={() => setStallId(stall.id)}>
-            <span><span className="stall-title">{language === 'en' ? stall.label : stall.zh}</span><span className="stall-mini">{t('Sample queue estimate', '示例等候时间')}</span></span>
-            <span className="queue-badge">{stall.queue} {t('min', '分钟')}</span>
-          </button>)}
-        </div>
-        {selectedStall && <div className="dish-list" data-testid={`menu-${selectedStall.id}`}>
-          <div className="dish-heading"><strong>{t('Today at this counter', '本档口菜品')}</strong><span className="stall-mini">{t('Sample menu', '示例菜单')}</span></div>
-          {selectedStall.menu.map((dish) => <article key={dish.name} className="dish-item">
-            <div className="dish-top"><span className="dish-name">{language === 'en' ? dish.name : dish.zh}</span><span className="dish-price">¥{dish.price}</span></div>
-            <p className="dish-desc">{language === 'en' ? dish.description : dish.zhDescription}</p>
-            <div className="dish-foot"><span>★ {dish.rating.toFixed(1)}</span><span className={dish.available ? 'availability' : 'unavailable'}>{dish.available ? t('Available', '供应中') : t('Sold out', '售罄')}</span>{dish.tags.map((tag) => <span className="dish-tag" key={tag}>{t(tag, tag === 'Vegetarian' ? '素食' : '纯素')}</span>)}</div>
-          </article>)}
-        </div>}
-        <div className="privacy-note"><strong>{t('Privacy first.', '隐私优先。')}</strong> {t('Seat states are anonymous demo signals; no names, profiles or personal location are shown.', '座位状态仅为匿名示例信息；不展示姓名、个人资料或个人位置。')}</div>
-      </aside>
-    </div>
+    </div>}
   </main>;
 }
 
 function NotFound({ t }: { t: (en: string, zh: string) => string }) {
   const [, setLocation] = useLocation();
-  return <main className="not-found"><div><div className="eyebrow">404 · {t('Not on the map', '不在地图上')}</div><h1 className="hero-title">{t('This path wandered off.', '这条路走远了。')}</h1><button className="directions-button" onClick={() => setLocation('/')}><ArrowLeft size={14} />{t('Back to dining map', '返回餐饮地图')}</button></div></main>;
+  return <main className="not-found"><div><div className="eyebrow">404 · {t('Not found', '页面不存在')}</div><h1>{t('This page is not here.', '页面不存在。')}</h1><button className="directions-button" onClick={() => setLocation('/')}><ArrowLeft size={14} />{t('Back to dining halls', '返回食堂列表')}</button></div></main>;
+}
+
+const floorStallNames: [string, string][] = [
+  ['Rice & wok', '米饭 / 小炒'], ['Noodle kitchen', '面食档口'], ['Vegetarian counter', '素食档口'],
+  ['Rice bowls', '盖饭档口'], ['Soup & congee', '汤粥档口'], ['Dumpling counter', '饺子档口'],
+  ['Seasonal dishes', '时令菜档口'], ['Steamed dishes', '蒸菜档口'], ['Snacks & sides', '小吃 / 配菜'],
+];
+
+function makeFloorStalls(stalls: Stall[]): Stall[] {
+  return floorStallNames.map(([label, zh], index) => {
+    const source = stalls[index % stalls.length];
+    return { ...source, id: `floor-stall-${index + 1}`, label, zh, queue: Math.max(2, source.queue + (index % 4) - 1) };
+  });
 }
 
 export default App;

@@ -30,12 +30,12 @@ A bilingual Tsinghua dining guide for exploring canteens, illustrative crowd for
 
 - The first build is a frontend-only prototype; its crowd, walking route, floor, seat, queue, and dish values are illustrative, not live Tsinghua data.
 - Dining hall names, stated location notes, and opening hours are referenced from Tsinghua's [Dining Options page](https://www.tsinghua.edu.cn/en/Visitor/Experience_Tsinghua/Dining_Options.htm).
-- Group-size matching uses the count of vacant seats at a table, not just its total capacity.
+- Each illustrative seating cluster contains six tables; each table has either two or four seats. Group sizes are 1–6.
 - The map and interior layouts are simplified examples; they are not survey-accurate campus navigation or building plans.
 
 ## Product
 
-The map lets students preview canteen crowd levels now or 15/30 minutes ahead, fade locations that do not meet dietary and budget filters, and view approximate directions. The canteen view supports floor switching, crowd-colored seating clusters, seat availability, group sizes of 1–4, estimated stall queues, and example menus. The interface supports English and Chinese.
+The map lets students preview canteen crowd levels now or 15/30 minutes ahead, filter dining halls by dietary and budget preferences, and view approximate directions. The canteen view supports floor switching, six seating clusters with six 2- or 4-seat tables per cluster, seat availability, group sizes of 1–6, estimated stall queues, and example menus. The interface supports English and Chinese.
 
 ## User preferences
 
