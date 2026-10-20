@@ -1,0 +1,1 @@
+- [THUCan product scope](thucan-product-scope.md) — Keep the campus map, occupancy forecasts, dining-floor seats, group filters, and stall menus within the defined scope.

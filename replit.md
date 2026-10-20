@@ -1,6 +1,6 @@
-# [Project name]
+# THUCan
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A bilingual Tsinghua dining guide for exploring canteens, illustrative crowd forecasts, floor seating, and stall menus.
 
 ## Run & Operate
 
@@ -22,15 +22,20 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/thucan/src/App.tsx` — campus map, sample dining data, floor layouts, seats, and stall menus
+- `artifacts/thucan/src/index.css` — THUCan theme and responsive UI
+- `artifacts/thucan/.replit-artifact/artifact.toml` — app preview and workflow configuration
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- The first build is a frontend-only prototype; its crowd, walking route, floor, seat, queue, and dish values are illustrative, not live Tsinghua data.
+- Dining hall names, stated location notes, and opening hours are referenced from Tsinghua's [Dining Options page](https://www.tsinghua.edu.cn/en/Visitor/Experience_Tsinghua/Dining_Options.htm).
+- Group-size matching uses the count of vacant seats at a table, not just its total capacity.
+- The map and interior layouts are simplified examples; they are not survey-accurate campus navigation or building plans.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+The map lets students preview canteen crowd levels now or 15/30 minutes ahead, fade locations that do not meet dietary and budget filters, and view approximate directions. The canteen view supports floor switching, crowd-colored seating clusters, seat availability, group sizes of 1–4, estimated stall queues, and example menus. The interface supports English and Chinese.
 
 ## User preferences
 
@@ -38,7 +43,8 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Keep illustrative data clearly labeled; live occupancy, routes, seats, queues, and menu feeds are not connected.
+- Keep the product focused on the campus map and canteen discovery flow unless the user asks to expand it.
 
 ## Pointers
 

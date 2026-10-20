@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/thucan/"
+title = "THUCan — Campus Dining"
+description = "A bilingual campus dining guide for Tsinghua students, with a simplified canteen map, crowd forecasts, dietary and budget filters, floor layouts, group seating, and stall menus."
+version = "1.0.0"
+id = "artifacts/thucan"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/thucan/" ]
+localPort = 20458
+
+[services.development]
+run = "pnpm --filter @workspace/thucan run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/thucan", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/thucan/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20458"
+BASE_PATH = "/thucan/"
