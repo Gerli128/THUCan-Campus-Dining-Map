@@ -30,12 +30,13 @@ A bilingual Tsinghua dining guide for exploring canteens, illustrative crowd for
 
 - The first build is a frontend-only prototype; its crowd, walking route, floor, seat, queue, and dish values are illustrative, not live Tsinghua data.
 - Dining hall names, stated location notes, and opening hours are referenced from Tsinghua's [Dining Options page](https://www.tsinghua.edu.cn/en/Visitor/Experience_Tsinghua/Dining_Options.htm).
-- Each illustrative seating cluster contains six tables; each table has either two or four seats. Group sizes are 1–6.
-- The map and interior layouts are simplified examples; they are not survey-accurate campus navigation or building plans.
+- Each illustrative seating cluster contains six tables; each table has either two or four seats. Group sizes are 1–4.
+- The home view is a full-screen, simplified road map inspired by the supplied campus map; it highlights dining locations rather than reproducing the map image. Marker positions and routes remain illustrative until verified coordinates are available.
+- Floor plans keep seating clusters on one side and stall counters in a line on the other. Selecting a cluster reveals its individual tables and seat states; occupancy is shown with green, yellow, and red.
 
 ## Product
 
-The map lets students preview canteen crowd levels now or 15/30 minutes ahead, filter dining halls by dietary and budget preferences, and view approximate directions. The canteen view supports floor switching, six seating clusters with six 2- or 4-seat tables per cluster, seat availability, group sizes of 1–6, estimated stall queues, and example menus. The interface supports English and Chinese.
+The map lets students preview canteen crowd levels continuously from now through 30 minutes ahead, filter whole canteens by dietary and per-person budget preferences, and view an illustrative route from Building 6. A second tap opens the canteen floor plan. The canteen view supports floor switching, six seating clusters with six 2- or 4-seat tables per cluster, table-level 1–4 person fit filtering, estimated stall queues, and example menus. The interface supports English and Chinese.
 
 ## User preferences
 
